@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { runSimulation, getWinner, type SimulationResult } from '@/lib/simulation';
 import { BarChartRace } from '@/components/BarChartRace';
 
-type AppState = 'input' | 'countdown' | 'running' | 'done';
+type AppState = 'input' | 'running' | 'done';
 
 const SIM_OPTIONS = [
   { label: '1.000', value: 1_000 },
@@ -18,7 +18,6 @@ export default function Home() {
   const [namesInput, setNamesInput] = useState('');
   const [simCount, setSimCount] = useState(10_000);
   const [result, setResult] = useState<SimulationResult | null>(null);
-  const [countdown, setCountdown] = useState<number | null>(null);
 
   const names = namesInput
     .split('\n')
@@ -29,28 +28,12 @@ export default function Home() {
 
   const handleDraw = useCallback(() => {
     if (!canDraw) return;
-    // Compute simulation immediately, then start countdown
     const sim = runSimulation(names, simCount);
     setResult(sim);
-    setAppState('countdown');
-    setCountdown(3);
+    setAppState('running');
   }, [names, simCount, canDraw]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Countdown tick
-  useEffect(() => {
-    if (countdown === null) return;
-    if (countdown === 0) {
-      setCountdown(null);
-      setAppState('running');
-      return;
-    }
-    const t = setTimeout(() => setCountdown((c) => (c !== null ? c - 1 : null)), 1000);
-    return () => clearTimeout(t);
-  }, [countdown]);
-
-  const handleComplete = useCallback(() => {
-    setAppState('done');
-  }, []);
+  const handleComplete = useCallback(() => setAppState('done'), []);
 
   const handleReset = useCallback(() => {
     setResult(null);
@@ -145,18 +128,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* COUNTDOWN OVERLAY */}
-        {appState === 'countdown' && countdown !== null && (
-          <div className="flex items-center justify-center py-24">
-            <span
-              key={countdown}
-              className="animate-countdown text-[10rem] font-bold leading-none text-white tabular-nums"
-            >
-              {countdown}
-            </span>
-          </div>
-        )}
-
         {/* RUNNING / DONE STATE */}
         {(appState === 'running' || appState === 'done') && result && (
           <div>
@@ -166,7 +137,6 @@ export default function Home() {
               total={result.total}
               onComplete={handleComplete}
             />
-
             {appState === 'done' && (
               <button
                 onClick={handleReset}
