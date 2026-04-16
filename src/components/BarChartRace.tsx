@@ -28,7 +28,7 @@ export function BarChartRace({
   frames,
   names,
   total,
-  duration = 30_000,
+  duration = 10_000,
   onComplete,
 }: Props) {
   const [bars, setBars] = useState<Bar[]>([]);
@@ -101,19 +101,16 @@ export function BarChartRace({
             </span>
             <div className="flex-1 h-9 bg-zinc-900 rounded-lg overflow-hidden">
               <div
-                className="h-full rounded-lg flex items-center justify-end px-3"
+                className="h-full rounded-lg"
                 style={{
-                  width: `${Math.max(bar.widthPct, bar.count > 0 ? 4 : 0)}%`,
+                  width: `${Math.max(bar.widthPct, bar.count > 0 ? 2 : 0)}%`,
                   backgroundColor: bar.color,
                 }}
-              >
-                {bar.count > 0 && (
-                  <span className="text-xs font-semibold text-black/70 tabular-nums">
-                    {bar.winPct.toFixed(1)}%
-                  </span>
-                )}
-              </div>
+              />
             </div>
+            <span className="w-16 text-right text-sm tabular-nums text-zinc-400 flex-shrink-0">
+              {bar.count.toLocaleString('da-DK')}
+            </span>
           </div>
         ))}
       </div>

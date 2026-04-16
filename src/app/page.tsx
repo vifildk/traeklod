@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { runSimulation, getWinner, type SimulationResult } from '@/lib/simulation';
 import { BarChartRace } from '@/components/BarChartRace';
 
-type AppState = 'input' | 'running' | 'done';
+type AppState = 'input' | 'countdown' | 'running' | 'done';
 
 const SIM_OPTIONS = [
   { label: '1.000', value: 1_000 },
@@ -18,6 +18,7 @@ export default function Home() {
   const [namesInput, setNamesInput] = useState('');
   const [simCount, setSimCount] = useState(10_000);
   const [result, setResult] = useState<SimulationResult | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   const names = namesInput
     .split('\n')
@@ -28,13 +29,24 @@ export default function Home() {
 
   const handleDraw = useCallback(() => {
     if (!canDraw) return;
-    setAppState('running');
-    // Defer heavy computation so the UI can paint 'running' state first
-    setTimeout(() => {
-      const sim = runSimulation(names, simCount);
-      setResult(sim);
-    }, 50);
+    // Compute simulation immediately, then start countdown
+    const sim = runSimulation(names, simCount);
+    setResult(sim);
+    setAppState('countdown');
+    setCountdown(3);
   }, [names, simCount, canDraw]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Countdown tick
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown === 0) {
+      setCountdown(null);
+      setAppState('running');
+      return;
+    }
+    const t = setTimeout(() => setCountdown((c) => (c !== null ? c - 1 : null)), 1000);
+    return () => clearTimeout(t);
+  }, [countdown]);
 
   const handleComplete = useCallback(() => {
     setAppState('done');
@@ -133,21 +145,27 @@ export default function Home() {
           </div>
         )}
 
+        {/* COUNTDOWN OVERLAY */}
+        {appState === 'countdown' && countdown !== null && (
+          <div className="flex items-center justify-center py-24">
+            <span
+              key={countdown}
+              className="animate-countdown text-[10rem] font-bold leading-none text-white tabular-nums"
+            >
+              {countdown}
+            </span>
+          </div>
+        )}
+
         {/* RUNNING / DONE STATE */}
-        {(appState === 'running' || appState === 'done') && (
+        {(appState === 'running' || appState === 'done') && result && (
           <div>
-            {result ? (
-              <BarChartRace
-                frames={result.frames}
-                names={result.names}
-                total={result.total}
-                onComplete={handleComplete}
-              />
-            ) : (
-              <div className="flex justify-center py-16">
-                <div className="w-6 h-6 border-2 border-zinc-700 border-t-indigo-500 rounded-full animate-spin" />
-              </div>
-            )}
+            <BarChartRace
+              frames={result.frames}
+              names={result.names}
+              total={result.total}
+              onComplete={handleComplete}
+            />
 
             {appState === 'done' && (
               <button
