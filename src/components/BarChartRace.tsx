@@ -8,10 +8,8 @@ const COLORS = [
   '#fb923c', '#a3e635', '#e879f9', '#4ade80',
 ];
 
-// Each row = h-9 (36px bar) + gap-3 (12px) = 48px
-const ROW_HEIGHT = 48;
-// How often to re-sort and update counts (ms)
-const SORT_INTERVAL = 600;
+const ROW_HEIGHT = 48;   // 36px bar + 12px gap
+const SORT_INTERVAL = 600; // ms between re-sorts
 
 interface Props {
   frames: number[][];
@@ -30,27 +28,30 @@ export function BarChartRace({
   delayMs = 3_000,
   onComplete,
 }: Props) {
-  // React state — updated infrequently (every SORT_INTERVAL ms)
+  // React state — only drives sort order (updated every SORT_INTERVAL)
   const [sortedNames, setSortedNames] = useState<string[]>(names);
-  const [displayCounts, setDisplayCounts] = useState<Record<string, number>>(
-    Object.fromEntries(names.map((n) => [n, 0]))
-  );
   const [countdown, setCountdown] = useState<number | null>(delayMs > 0 ? 3 : null);
 
-  // DOM refs — updated every frame (60fps), bypass React
-  const barFillRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const progressRef = useRef<HTMLDivElement>(null);
-  const counterRef = useRef<HTMLSpanElement>(null);
+  // DOM refs — updated every frame (60fps), no React re-render
+  const barFillRefs  = useRef<Map<string, HTMLDivElement>>(new Map());
+  const countRefs    = useRef<Map<string, HTMLSpanElement>>(new Map());
+  const progressRef  = useRef<HTMLDivElement>(null);
+  const counterRef   = useRef<HTMLSpanElement>(null);
 
-  // Animation bookkeeping
-  const rafRef = useRef<number>(0);
-  const startRef = useRef<number>(0);
-  const lastSortRef = useRef<number>(-SORT_INTERVAL);
+  const rafRef       = useRef<number>(0);
+  const startRef     = useRef<number>(0);
+  const lastSortRef  = useRef<number>(-SORT_INTERVAL);
   const completedRef = useRef(false);
-  const nameToIdx = useRef(new Map(names.map((n, i) => [n, i])));
-  const colorMap = Object.fromEntries(names.map((n, i) => [n, COLORS[i % COLORS.length]]));
+  const nameToIdx    = useRef(new Map(names.map((n, i) => [n, i])));
+  const colorMap     = Object.fromEntries(names.map((n, i) => [n, COLORS[i % COLORS.length]]));
 
-  // Countdown ticks (inside this component so it can overlay the bars)
+  // Precompute final-frame values for the end-zoom
+  const finalFrame    = frames[frames.length - 1];
+  const finalMaxCount = Math.max(...finalFrame, 1);
+  const finalMinCount = Math.min(...finalFrame);
+  const finalRange    = finalMaxCount - finalMinCount || 1;
+
+  // ── Countdown ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (delayMs <= 0) return;
     const t1 = setTimeout(() => setCountdown(2), 1000);
@@ -59,10 +60,7 @@ export function BarChartRace({
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fixed scale: winner's final count = 100% width — never changes during animation
-  const finalMaxCount = Math.max(...frames[frames.length - 1], 1);
-
-  // Animation loop — starts after delayMs
+  // ── Animation loop ───────────────────────────────────────────────────────
   useEffect(() => {
     completedRef.current = false;
 
@@ -71,36 +69,32 @@ export function BarChartRace({
       const elapsed = ts - startRef.current;
       const t = Math.min(elapsed / duration, 1);
 
-      // Interpolate between two adjacent frames
-      const fi = t * (frames.length - 1);
-      const lo = Math.floor(fi);
-      const hi = Math.min(lo + 1, frames.length - 1);
+      // Interpolate between adjacent frames
+      const fi  = t * (frames.length - 1);
+      const lo  = Math.floor(fi);
+      const hi  = Math.min(lo + 1, frames.length - 1);
       const mix = fi - lo;
-      const rawCounts = frames[lo].map((c, i) => c + (frames[hi][i] - c) * mix);
+      const raw = frames[lo].map((c, i) => c + (frames[hi][i] - c) * mix);
 
-      // ── High-frequency DOM updates (no React re-render) ──────────────────
+      // 60fps: bar widths + count labels + counters (direct DOM, no React)
       names.forEach((name, i) => {
-        const el = barFillRefs.current.get(name);
-        if (el) {
-          const pct = rawCounts[i] > 0 ? Math.max((rawCounts[i] / finalMaxCount) * 100, 2) : 0;
-          el.style.width = `${pct}%`;
+        const barEl = barFillRefs.current.get(name);
+        if (barEl) {
+          const pct = raw[i] > 0 ? Math.max((raw[i] / finalMaxCount) * 100, 2) : 0;
+          barEl.style.width = `${pct}%`;
         }
+        const countEl = countRefs.current.get(name);
+        if (countEl) countEl.textContent = Math.round(raw[i]).toLocaleString('da-DK');
       });
       if (progressRef.current) progressRef.current.style.width = `${t * 100}%`;
-      if (counterRef.current) {
-        counterRef.current.textContent = Math.round(t * total).toLocaleString('da-DK');
-      }
+      if (counterRef.current)  counterRef.current.textContent  = Math.round(t * total).toLocaleString('da-DK');
 
-      // ── Low-frequency React update (re-sort + update counts) ─────────────
+      // 600ms: re-sort (React state — triggers smooth CSS slide)
       if (elapsed - lastSortRef.current >= SORT_INTERVAL || t === 1) {
-        const rounded = rawCounts.map(Math.round);
-        setSortedNames(
-          [...names].sort(
-            (a, b) =>
-              rounded[nameToIdx.current.get(b)!] - rounded[nameToIdx.current.get(a)!]
-          )
-        );
-        setDisplayCounts(Object.fromEntries(names.map((n, i) => [n, rounded[i]])));
+        const rounded = raw.map(Math.round);
+        setSortedNames([...names].sort(
+          (a, b) => rounded[nameToIdx.current.get(b)!] - rounded[nameToIdx.current.get(a)!]
+        ));
         lastSortRef.current = elapsed;
       }
 
@@ -108,6 +102,18 @@ export function BarChartRace({
         rafRef.current = requestAnimationFrame(animate);
       } else if (!completedRef.current) {
         completedRef.current = true;
+
+        // End-zoom: transition bars to a relative scale so differences are visible
+        // Winner → 100%, last place → 25%, rest proportional in between
+        names.forEach((name, i) => {
+          const el = barFillRefs.current.get(name);
+          if (el) {
+            el.style.transition = 'width 1000ms ease';
+            const pct = 25 + ((finalFrame[i] - finalMinCount) / finalRange) * 75;
+            el.style.width = `${pct}%`;
+          }
+        });
+
         onComplete();
       }
     }
@@ -132,7 +138,7 @@ export function BarChartRace({
         <span className="text-zinc-700"> / {total.toLocaleString('da-DK')} simuleringer</span>
       </p>
 
-      {/* Bar chart — rows absolutely positioned so CSS can animate their Y */}
+      {/* Bars — absolutely positioned rows, CSS-animated Y position */}
       <div className="relative" style={{ height: `${names.length * ROW_HEIGHT}px` }}>
         {names.map((name) => {
           const rank = rankMap[name] ?? 0;
@@ -162,15 +168,21 @@ export function BarChartRace({
                   style={{ width: '0%', backgroundColor: colorMap[name] }}
                 />
               </div>
-              <span className="w-16 text-right text-sm tabular-nums text-zinc-400 flex-shrink-0 select-none">
-                {(displayCounts[name] ?? 0).toLocaleString('da-DK')}
+              <span
+                ref={(el) => {
+                  if (el) countRefs.current.set(name, el);
+                  else countRefs.current.delete(name);
+                }}
+                className="w-16 text-right text-sm tabular-nums text-zinc-400 flex-shrink-0 select-none"
+              >
+                0
               </span>
             </div>
           );
         })}
       </div>
 
-      {/* 3-2-1 overlay — sits on top of the bars */}
+      {/* 3-2-1 overlay */}
       {countdown !== null && (
         <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 rounded-xl">
           <span
