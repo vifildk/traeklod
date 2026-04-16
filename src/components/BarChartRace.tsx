@@ -59,6 +59,9 @@ export function BarChartRace({
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Fixed scale: winner's final count = 100% width — never changes during animation
+  const finalMaxCount = Math.max(...frames[frames.length - 1], 1);
+
   // Animation loop — starts after delayMs
   useEffect(() => {
     completedRef.current = false;
@@ -74,13 +77,12 @@ export function BarChartRace({
       const hi = Math.min(lo + 1, frames.length - 1);
       const mix = fi - lo;
       const rawCounts = frames[lo].map((c, i) => c + (frames[hi][i] - c) * mix);
-      const maxCount = Math.max(...rawCounts, 1);
 
       // ── High-frequency DOM updates (no React re-render) ──────────────────
       names.forEach((name, i) => {
         const el = barFillRefs.current.get(name);
         if (el) {
-          const pct = rawCounts[i] > 0 ? Math.max((rawCounts[i] / maxCount) * 100, 2) : 0;
+          const pct = rawCounts[i] > 0 ? Math.max((rawCounts[i] / finalMaxCount) * 100, 2) : 0;
           el.style.width = `${pct}%`;
         }
       });
