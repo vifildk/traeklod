@@ -49,7 +49,15 @@ export function BarChartRace({
   const finalFrame    = frames[frames.length - 1];
   const finalMaxCount = Math.max(...finalFrame, 1);
   const finalMinCount = Math.min(...finalFrame);
-  const finalRange    = finalMaxCount - finalMinCount || 1;
+  const finalRange    = finalMaxCount - finalMinCount;
+
+  // Target left-boundary so the last-place bar ends up at ~20% width:
+  // minBarPct = (finalMinCount - targetXMin) / (finalMaxCount - targetXMin)  →  solve for targetXMin
+  const MIN_BAR_PCT  = 0.20;
+  const targetXMin   = Math.max(
+    0,
+    (finalMinCount - MIN_BAR_PCT * finalMaxCount) / (1 - MIN_BAR_PCT)
+  );
 
   // ── Countdown ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -102,19 +110,35 @@ export function BarChartRace({
         rafRef.current = requestAnimationFrame(animate);
       } else if (!completedRef.current) {
         completedRef.current = true;
+        onComplete(); // reveal winner immediately
 
-        // End-zoom: transition bars to a relative scale so differences are visible
-        // Winner → 100%, last place → 25%, rest proportional in between
-        names.forEach((name, i) => {
-          const el = barFillRefs.current.get(name);
-          if (el) {
-            el.style.transition = 'width 1000ms ease';
-            const pct = 25 + ((finalFrame[i] - finalMinCount) / finalRange) * 75;
-            el.style.width = `${pct}%`;
+        // Zoom: animate the x-axis left boundary from 0 → targetXMin
+        // All bars grow, but winner reaches 100% — feels like zooming in
+        if (finalRange > 0 && targetXMin > 0) {
+          const ZOOM_MS = 1400;
+          let zoomStart = 0;
+
+          function zoomTick(ts: number) {
+            if (!zoomStart) zoomStart = ts;
+            const p = Math.min((ts - zoomStart) / ZOOM_MS, 1);
+            // ease-in-out
+            const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+
+            const xMin   = e * targetXMin;
+            const xRange = finalMaxCount - xMin;
+
+            names.forEach((name, i) => {
+              const el = barFillRefs.current.get(name);
+              if (el) {
+                el.style.width = `${Math.max(((finalFrame[i] - xMin) / xRange) * 100, 1)}%`;
+              }
+            });
+
+            if (p < 1) rafRef.current = requestAnimationFrame(zoomTick);
           }
-        });
 
-        onComplete();
+          rafRef.current = requestAnimationFrame(zoomTick);
+        }
       }
     }
 
