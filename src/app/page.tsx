@@ -1,65 +1,165 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useCallback } from 'react';
+import { runSimulation, getWinner, type SimulationResult } from '@/lib/simulation';
+import { BarChartRace } from '@/components/BarChartRace';
+
+type AppState = 'input' | 'running' | 'done';
+
+const SIM_OPTIONS = [
+  { label: '1.000', value: 1_000 },
+  { label: '10.000', value: 10_000 },
+  { label: '100.000', value: 100_000 },
+  { label: '1.000.000', value: 1_000_000 },
+];
 
 export default function Home() {
+  const [appState, setAppState] = useState<AppState>('input');
+  const [namesInput, setNamesInput] = useState('');
+  const [simCount, setSimCount] = useState(10_000);
+  const [result, setResult] = useState<SimulationResult | null>(null);
+
+  const names = namesInput
+    .split('\n')
+    .map((n) => n.trim())
+    .filter(Boolean);
+
+  const canDraw = names.length >= 2;
+
+  const handleDraw = useCallback(() => {
+    if (!canDraw) return;
+    setAppState('running');
+    // Defer heavy computation so the UI can paint 'running' state first
+    setTimeout(() => {
+      const sim = runSimulation(names, simCount);
+      setResult(sim);
+    }, 50);
+  }, [names, simCount, canDraw]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleComplete = useCallback(() => {
+    setAppState('done');
+  }, []);
+
+  const handleReset = useCallback(() => {
+    setResult(null);
+    setAppState('input');
+  }, []);
+
+  const winner = result && appState === 'done' ? getWinner(result) : null;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col items-center justify-center px-6 py-16">
+      <div className="w-full max-w-2xl">
+
+        {/* Header */}
+        <div className="text-center mb-12">
+          <h1 className="text-5xl font-bold tracking-tight">Træklod</h1>
+          {appState === 'input' && (
+            <p className="mt-3 text-zinc-500">
+              Lodtrækning med{' '}
+              <span className="text-zinc-400">{simCount.toLocaleString('da-DK')}</span>{' '}
+              simuleringer
+            </p>
+          )}
+          {appState === 'running' && (
+            <p className="mt-3 text-zinc-500">Simulerer&hellip;</p>
+          )}
+          {appState === 'done' && winner && (
+            <div className="mt-4">
+              <p className="text-xs uppercase tracking-widest text-zinc-600 mb-2">
+                Vinderen er
+              </p>
+              <p className="text-4xl font-bold text-white">{winner}</p>
+            </div>
+          )}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+
+        {/* INPUT STATE */}
+        {appState === 'input' && (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-2">
+                Deltagere{' '}
+                <span className="text-zinc-600 font-normal">(ét navn per linje)</span>
+              </label>
+              <textarea
+                value={namesInput}
+                onChange={(e) => setNamesInput(e.target.value)}
+                placeholder={'Anders\nBirgit\nCarsten\nDorthe'}
+                rows={8}
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-600 resize-none font-mono text-sm leading-relaxed"
+              />
+              <p className="mt-1.5 text-xs text-zinc-700">
+                {names.length === 0
+                  ? 'Ingen deltagere endnu'
+                  : `${names.length} deltager${names.length === 1 ? '' : 'e'}`}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-2">
+                Antal simuleringer
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {SIM_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setSimCount(opt.value)}
+                    className={`py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      simCount === opt.value
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 border border-zinc-800'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={handleDraw}
+              disabled={!canDraw}
+              className="w-full py-4 rounded-xl font-semibold text-lg transition-all bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] disabled:opacity-25 disabled:cursor-not-allowed text-white"
+            >
+              Træk lod
+            </button>
+
+            {names.length === 1 && (
+              <p className="text-center text-sm text-zinc-600">
+                Tilføj mindst 2 deltagere for at trække lod
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* RUNNING / DONE STATE */}
+        {(appState === 'running' || appState === 'done') && (
+          <div>
+            {result ? (
+              <BarChartRace
+                frames={result.frames}
+                names={result.names}
+                total={result.total}
+                onComplete={handleComplete}
+              />
+            ) : (
+              <div className="flex justify-center py-16">
+                <div className="w-6 h-6 border-2 border-zinc-700 border-t-indigo-500 rounded-full animate-spin" />
+              </div>
+            )}
+
+            {appState === 'done' && (
+              <button
+                onClick={handleReset}
+                className="mt-10 w-full py-3 rounded-xl font-medium text-zinc-500 border border-zinc-800 hover:bg-zinc-900 hover:text-zinc-300 transition-colors"
+              >
+                Prøv igen
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
